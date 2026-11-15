@@ -46,10 +46,12 @@ func main() {
 
 	fmt.Println("\nTime Claims")
 	timeClaimKeys := []string{"iat", "nbf", "exp"}
+	now := time.Now()
 	for _, name := range timeClaimKeys {
 		t, exists := claimTime(claims, name)
 		if exists {
-			fmt.Printf("%-5s %s\n", name, t.Format("2006-01-02 15:04:05 UTC"))
+			status := claimStatus(name, t, now)
+			fmt.Printf("%-5s %-25s %s\n", name, t.Format("2006-01-02 15:04:05 MST"), status)
 			continue
 		}
 		fmt.Printf("%-5s %s\n", name, "unset")
@@ -81,4 +83,57 @@ func claimTime(claims map[string]any, key string) (time.Time, bool) {
 		return time.Unix(int64(unix), 0).UTC(), true
 	}
 	return time.Time{}, false
+}
+
+func pluralize(n int, unit string) string {
+	if n == 1 {
+		return fmt.Sprintf("%d %s", n, unit)
+	}
+	return fmt.Sprintf("%d %ss", n, unit)
+}
+
+func claimStatus(key string, t time.Time, now time.Time) string {
+	d := t.Sub(now)
+	if d < 0 {
+		d = -d
+	}
+
+	const (
+		month = 730 * time.Hour
+		year  = 8760 * time.Hour
+	)
+
+	var description string
+	switch {
+	case d < time.Minute:
+		description = pluralize(int(d.Seconds()), "second")
+	case d < time.Hour:
+		description = pluralize(int(d.Minutes()), "minute")
+	case d < 24*time.Hour:
+		description = pluralize(int(d.Hours()), "hour")
+	case d < month:
+		description = pluralize(int(d.Hours()/24), "day")
+	case d < year:
+		description = pluralize(int(d/month), "month")
+	default:
+		description = pluralize(int(d/year), "year")
+	}
+
+	switch key {
+	case "exp":
+		if t.After(now) {
+			return "valid, expires in " + description
+		}
+		return "expired " + description + " ago"
+	case "nbf":
+		if t.After(now) {
+			return "will be valid in " + description
+		}
+		return "already valid"
+	default:
+		if t.After(now) {
+			return "will be issued in " + description
+		}
+		return "issued " + description + " ago"
+	}
 }
