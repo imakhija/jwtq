@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -10,13 +11,33 @@ import (
 )
 
 func main() {
-	if len(os.Args) < 2 {
+	secret := flag.String("secret", "", "Secret used to sign the token")
+	jsonOutput := flag.Bool("json", false, "JSON output")
+	noColor := flag.Bool("no-color", false, "No color in output")
+
+	flag.Usage = func() {
+		fmt.Fprintln(os.Stderr, "usage: jwtq [flags] <token>")
+		flag.PrintDefaults()
+	}
+	flag.Parse()
+
+	if len(flag.Args()) < 1 {
 		fmt.Fprintln(os.Stderr, "error: no token provided")
-		fmt.Fprintln(os.Stderr, "usage: jwtq <token>")
+		flag.Usage()
 		os.Exit(1)
 	}
 
-	token := os.Args[1]
+	if len(flag.Args()) > 1 {
+		fmt.Fprintf(os.Stderr, "error: unexpected arguments %v (flags must come before the token)\n", flag.Args()[1:])
+		flag.Usage()
+		os.Exit(1)
+	}
+
+	token := flag.Arg(0)
+
+	fmt.Println("secret:", *secret)
+	fmt.Println("JSON output:", *jsonOutput)
+	fmt.Println("no color:", *noColor)
 
 	segments := strings.Split(token, ".")
 	if len(segments) != 3 {
@@ -39,7 +60,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Println("Header")
+	fmt.Println("\nHeader")
 	fmt.Println(prettify(headerFields))
 	fmt.Println("\nPayload")
 	fmt.Println(prettify(claims))
