@@ -1,10 +1,14 @@
 package main
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"hash"
 	"os"
 	"strings"
 	"time"
@@ -35,7 +39,6 @@ func main() {
 
 	token := flag.Arg(0)
 
-	fmt.Println("secret:", *secret)
 	fmt.Println("JSON output:", *jsonOutput)
 	fmt.Println("no color:", *noColor)
 
@@ -77,6 +80,49 @@ func main() {
 		}
 		fmt.Printf("%-5s %s\n", name, "unset")
 	}
+	fmt.Println("")
+
+	if *secret == "" {
+		fmt.Println("signature unverified; no secret provided")
+	} else {
+		signature := segments[2]
+		signatureBytes, err := base64.RawURLEncoding.DecodeString(signature)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "decoding signature: %v\n", err)
+			os.Exit(1)
+		}
+		signingInput := encodedHeader + "." + encodedPayload
+		signingAlg, _ := headerFields["alg"].(string)
+		valid, err := verifyHMAC(signingAlg, signingInput, signatureBytes, *secret)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+		} else if valid {
+			fmt.Printf("%s signature verified\n", signingAlg)
+		} else {
+			fmt.Println("signature verification failed")
+		}
+	}
+}
+
+func verifyHMAC(signingAlg string, signingInput string, signatureBytes []byte, secret string) (bool, error) {
+	var h func() hash.Hash
+
+	switch signingAlg {
+	case "HS256":
+		h = sha256.New
+	case "HS384":
+		h = sha512.New384
+	case "HS512":
+		h = sha512.New
+	case "":
+		return false, fmt.Errorf("no signing algorithm in header")
+	default:
+		return false, fmt.Errorf("unsupported signing algorithm %q", signingAlg)
+	}
+
+	mac := hmac.New(h, []byte(secret))
+	mac.Write([]byte(signingInput))
+	return hmac.Equal(mac.Sum(nil), signatureBytes), nil
 }
 
 func decode(segmentType string, encodedSegment string) (map[string]any, error) {
